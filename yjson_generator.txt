@@ -1,0 +1,164 @@
+REPORT yjson_generator.
+PARAMETERS: project  TYPE /iwbep/i_sbo_es-project OBLIGATORY,
+            enttset  TYPE /iwbep/i_sbo_es-name OBLIGATORY,
+            filename TYPE char50.
+PARAMETERS: p_expand AS CHECKBOX TYPE char1 DEFAULT ' ' .
+PARAMETERS: p_clipb  AS CHECKBOX TYPE char1.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR enttset.
+  DATA: gv_program_name TYPE d020s-prog VALUE 'YJSON_GENERATOR', "name of the program from where we trigger the function module
+        gv_screen_no    TYPE d020s-dnum VALUE '1000', "number of the screen from where we want to trigger values
+        gs_dynpread     TYPE dynpread,
+        gt_dynpread     TYPE TABLE OF dynpread.
+  CLEAR gs_dynpread.
+  gs_dynpread-fieldname = 'PROJECT'.
+  APPEND gs_dynpread TO gt_dynpread.
+  CALL FUNCTION 'DYNP_VALUES_READ'
+    EXPORTING
+      dyname     = gv_program_name
+      dynumb     = gv_screen_no
+    TABLES
+      dynpfields = gt_dynpread
+    EXCEPTIONS
+      OTHERS     = 1.
+  IF sy-subrc = 0.
+    project = VALUE #( gt_dynpread[ 1 ]-fieldvalue DEFAULT VALUE #( ) ).
+  ENDIF.
+
+  IF project IS NOT INITIAL.
+    TRANSLATE project TO UPPER CASE.
+    SELECT name FROM /iwbep/i_sbo_es INTO TABLE @DATA(lt_entitysets) WHERE project = @project.
+    IF sy-subrc = 0.
+      CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+        EXPORTING
+          retfield        = 'ENTITYSET'
+          dynpprog        = sy-repid
+          dynpnr          = '1000'
+          dynprofield     = 'ENTTSET'
+          value_org       = 'S'
+        TABLES
+          value_tab       = lt_entitysets
+        EXCEPTIONS
+          parameter_error = 1
+          no_values_found = 2
+          OTHERS          = 3.
+
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+    ELSE.
+      MESSAGE: 'No Entitysets Found' TYPE 'S' DISPLAY LIKE 'E'.
+      LEAVE LIST-PROCESSING.
+    ENDIF.
+  ELSE.
+    MESSAGE: 'Please Enter Project' TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+
+START-OF-SELECTION.
+
+  "obtain basic properties first
+  SELECT SINGLE entity_type FROM /iwbep/i_sbo_es INTO @DATA(lv_entity_id) WHERE project = @project AND name = @enttset.
+*  SELECT project, node_uuid, name FROM /iwbep/i_sbo_pr INTO TABLE @DATA(lt_properties) WHERE project = @project AND parent_uuid = @lv_entity_id.
+  SELECT project, node_uuid, name, relation_guid FROM /iwbep/i_sbo_np INTO TABLE @DATA(lt_navigations) WHERE project = @project AND entity_guid = @lv_entity_id.
+
+  "For expansion of navigations
+  "Get association name based on navigations
+  SELECT project, node_uuid, right_end_guid FROM /iwbep/i_sbo_aso INTO TABLE @DATA(lt_associations)
+    FOR ALL ENTRIES IN @lt_navigations WHERE project = @project AND node_uuid = @lt_navigations-relation_guid.
+
+  "To get properties for main entity also
+  APPEND VALUE #( right_end_guid = lv_entity_id ) TO lt_associations.
+
+  "Get properties for navigation link
+  SELECT project, node_uuid, name, parent_uuid FROM /iwbep/i_sbo_pr INTO TABLE @DATA(lt_all_properties)
+    FOR ALL ENTRIES IN @lt_associations WHERE project = @project AND parent_uuid = @lt_associations-right_end_guid .
+
+  CONSTANTS: lc_curly_open  TYPE char1 VALUE '{',
+             lc_curly_close TYPE char1 VALUE '}'.
+  DATA: lt_json TYPE STANDARD TABLE OF string.
+
+  IF p_expand = abap_true.
+    APPEND '{ "d" : { ' TO lt_json.
+    LOOP AT lt_all_properties INTO DATA(property) WHERE parent_uuid = lv_entity_id.
+      APPEND |"{ property-name }" : "", | TO lt_json.
+    ENDLOOP.
+    LOOP AT lt_navigations INTO DATA(navigation).
+      APPEND |"{ navigation-name }" : [{ lc_curly_open } | TO lt_json.
+      "populate the properties of navigation
+      DATA(linked_entity) = VALUE #( lt_associations[ node_uuid = navigation-relation_guid ]-right_end_guid OPTIONAL ).
+      LOOP AT lt_all_properties INTO DATA(nav_properties) WHERE parent_uuid = linked_entity.
+        APPEND |                "{ nav_properties-name }" : "", | TO lt_json.
+      ENDLOOP.
+      APPEND  |{ lc_curly_close }], | TO lt_json.
+    ENDLOOP.
+    APPEND '} }' TO lt_json.
+  ELSE.
+    APPEND '{ "d" : { ' TO lt_json.
+    LOOP AT lt_all_properties INTO property WHERE parent_uuid = lv_entity_id.
+      APPEND |"{ property-name }" : "", | TO lt_json.
+    ENDLOOP.
+    LOOP AT lt_navigations INTO navigation.
+      APPEND |"{ navigation-name }" : [], | TO lt_json.
+    ENDLOOP.
+    APPEND '} }' TO lt_json.
+  ENDIF.
+
+  IF filename IS NOT INITIAL.
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        filename = CONV string( filename )
+      TABLES
+        data_tab = lt_json
+      EXCEPTIONS
+        OTHERS   = 1.
+    IF sy-subrc = 0.
+      MESSAGE 'File Saved Succesfully' TYPE 'S'.
+    ELSE.
+      MESSAGE 'Cannot Create file' TYPE 'S' DISPLAY LIKE 'E'. LEAVE LIST-PROCESSING.
+    ENDIF.
+  ENDIF.
+
+
+  IF p_clipb IS NOT INITIAL.
+    TYPES:
+      BEGIN OF ty_clipdata,
+        data TYPE c LENGTH 500,
+      END   OF ty_clipdata.
+    DATA: lt_clipdata TYPE STANDARD TABLE OF ty_clipdata.
+    DATA: ls_clipdata LIKE LINE OF lt_clipdata.
+    CONSTANTS: c_tab  TYPE c VALUE cl_bcs_convert=>gc_tab.
+    DATA: lv_rc TYPE i.
+
+    LOOP AT lt_json ASSIGNING FIELD-SYMBOL(<lfs_data>).
+      CONCATENATE <lfs_data> c_tab
+        INTO ls_clipdata-data.
+      APPEND ls_clipdata TO lt_clipdata.
+    ENDLOOP.
+*
+*  * Put into clipboard
+    cl_gui_frontend_services=>clipboard_export(
+      IMPORTING
+        data                 = lt_clipdata
+      CHANGING
+        rc                   = lv_rc
+      EXCEPTIONS
+        cntl_error           = 1
+        error_no_gui         = 2
+        not_supported_by_gui = 3
+        no_authority         = 4
+        OTHERS               = 5 )
+            .
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                 WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ELSE.
+      MESSAGE 'Copied to Clipboard' TYPE 'S'.
+    ENDIF.
+  ENDIF.
+
+  LOOP AT lt_json INTO DATA(lv_json).
+    WRITE:/ lv_json.
+  ENDLOOP.
