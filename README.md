@@ -43,6 +43,6 @@ This is a small bug and can be easily removed by me upon some time investment. *
 
 Also one more limitation is that in the generated JSON the program places "" as values of properties. Now for the Integer type properties the value should come without the quotes. The plan going forward is to have initial values as property values that can be edited by the users.
 
-Also, currently, very less emphasis is laid on performance of the program which will surely be enhanced in future versions and again the program is very loosely tested. 
+Also, currently, very less emphasis is laid on performance of the program which will surely be enhanced in future versions. 
 
 Your valuable feedback is highly welcome.
