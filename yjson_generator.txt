@@ -1,4 +1,4 @@
-REPORT yjson_generator.
+REPORT yjson_generator. "Report
 PARAMETERS: project  TYPE /iwbep/i_sbo_es-project OBLIGATORY,
             enttset  TYPE /iwbep/i_sbo_es-name OBLIGATORY,
             filename TYPE char50.
@@ -26,7 +26,7 @@ AT SELECTION-SCREEN ON VALUE-REQUEST FOR enttset.
   ENDIF.
 
   IF project IS NOT INITIAL.
-    TRANSLATE project TO UPPER CASE.
+    project = to_upper( project ).
     SELECT name FROM /iwbep/i_sbo_es INTO TABLE @DATA(lt_entitysets) WHERE project = @project.
     IF sy-subrc = 0.
       CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
@@ -61,7 +61,7 @@ START-OF-SELECTION.
 
   "obtain basic properties first
   SELECT SINGLE entity_type FROM /iwbep/i_sbo_es INTO @DATA(lv_entity_id) WHERE project = @project AND name = @enttset.
-*  SELECT project, node_uuid, name FROM /iwbep/i_sbo_pr INTO TABLE @DATA(lt_properties) WHERE project = @project AND parent_uuid = @lv_entity_id.
+
   SELECT project, node_uuid, name, relation_guid FROM /iwbep/i_sbo_np INTO TABLE @DATA(lt_navigations) WHERE project = @project AND entity_guid = @lv_entity_id.
 
   "For expansion of navigations
@@ -79,7 +79,7 @@ START-OF-SELECTION.
   CONSTANTS: lc_curly_open  TYPE char1 VALUE '{',
              lc_curly_close TYPE char1 VALUE '}'.
   DATA: lt_json TYPE STANDARD TABLE OF string.
-
+  FIELD-SYMBOLS: <comma_remover> TYPE string.
   IF p_expand = abap_true.
     APPEND '{ "d" : { ' TO lt_json.
     LOOP AT lt_all_properties INTO DATA(property) WHERE parent_uuid = lv_entity_id.
@@ -92,8 +92,14 @@ START-OF-SELECTION.
       LOOP AT lt_all_properties INTO DATA(nav_properties) WHERE parent_uuid = linked_entity.
         APPEND |                "{ nav_properties-name }" : "", | TO lt_json.
       ENDLOOP.
+      UNASSIGN <comma_remover>.
+      ASSIGN lt_json[ lines( lt_json ) ] TO <comma_remover>.
+      PERFORM remove_comma CHANGING <comma_remover>.
       APPEND  |{ lc_curly_close }], | TO lt_json.
     ENDLOOP.
+    UNASSIGN <comma_remover>.
+    ASSIGN lt_json[ lines( lt_json ) ] TO <comma_remover>.
+    PERFORM remove_comma CHANGING <comma_remover>.
     APPEND '} }' TO lt_json.
   ELSE.
     APPEND '{ "d" : { ' TO lt_json.
@@ -103,6 +109,9 @@ START-OF-SELECTION.
     LOOP AT lt_navigations INTO navigation.
       APPEND |"{ navigation-name }" : [], | TO lt_json.
     ENDLOOP.
+    UNASSIGN <comma_remover>.
+    ASSIGN lt_json[ lines( lt_json ) ] TO <comma_remover>.
+    PERFORM remove_comma CHANGING <comma_remover>.
     APPEND '} }' TO lt_json.
   ENDIF.
 
@@ -132,11 +141,9 @@ START-OF-SELECTION.
     CONSTANTS: c_tab  TYPE c VALUE cl_bcs_convert=>gc_tab.
     DATA: lv_rc TYPE i.
 
-    LOOP AT lt_json ASSIGNING FIELD-SYMBOL(<lfs_data>).
-      CONCATENATE <lfs_data> c_tab
-        INTO ls_clipdata-data.
-      APPEND ls_clipdata TO lt_clipdata.
-    ENDLOOP.
+
+    lt_clipdata = VALUE #( FOR <json> IN lt_json ( |{ <json> }{ c_tab }| ) ).
+
 *
 *  * Put into clipboard
     cl_gui_frontend_services=>clipboard_export(
@@ -162,3 +169,9 @@ START-OF-SELECTION.
   LOOP AT lt_json INTO DATA(lv_json).
     WRITE:/ lv_json.
   ENDLOOP.
+
+
+FORM remove_comma CHANGING iv_last_entry TYPE string.
+  DATA(len) = strlen( iv_last_entry ) - 2.
+  iv_last_entry = iv_last_entry+0(len).
+ENDFORM.
