@@ -21,27 +21,8 @@ To save some time, this ABAP program *(utility)* can generate JSON payload for y
 5. Copy to Clipboard ? *(Copy Generted JSON to clipboard ?)*
 
 ### Known Bugs
-Since this ABAP program is made out of free time only and has not been tested by anyone except me, hence it may contains some bugs. One of the known bug is the extra comma *(,)* that comes at the last of the property list and navigation property list, so users need to remove that comma manually so that the JSON is correctly formatted.
 
-        { "d" : {
-    "Carrid" : "",
-    "Connid" : "",
-    "Fldate" : "",
-    "Price" : "",
-    "Currency" : "",
-    "Planetype" : "",
-    "Seatsmax" : "",
-    "Seatsocc" : "",
-    "Paymentsum" : "",
-    "SeatsmaxB" : "",
-    "SeatsoccB" : "",
-    "SeatsmaxF" : "",
-    "SeatsoccF" : "",
-    "ToBookings" : [],  //this comma is irrelavant and needs to be removed
-    } }
-This is a small bug and can be easily removed by me upon some time investment. *(Me being highly excited to publish my first GitHub, hence cannot wait )*
-
-Also one more limitation is that in the generated JSON the program places "" as values of properties. Now for the Integer type properties the value should come without the quotes. The plan going forward is to have initial values as property values that can be edited by the users.
+One limitation is that in the generated JSON the program places "" as values of properties. Now for the Integer type properties the value should come without the quotes. The plan going forward is to populate initial values as property values e.g. 0 for integer, "" for Strings, "false" for boolean etc. that can be edited by the users.
 
 Also, currently, very less emphasis is laid on performance of the program which will surely be enhanced in future versions. 
 
