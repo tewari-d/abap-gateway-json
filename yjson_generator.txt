@@ -175,3 +175,4 @@ FORM remove_comma CHANGING iv_last_entry TYPE string.
   DATA(len) = strlen( iv_last_entry ) - 2.
   iv_last_entry = iv_last_entry+0(len).
 ENDFORM.
+
