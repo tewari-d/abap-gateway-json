@@ -27,6 +27,3 @@ One limitation is that in the generated JSON the program places "" as values of 
 Also, currently, very less emphasis is laid on performance of the program which will surely be enhanced in future versions. 
 
 Your valuable feedback is highly welcome.
-
-### Update 20 July 2021
-The additional comma that was comming at the end of JSOn properties and navigation properties has been removed. Now the output JSON is consistent to use in the gateway client after filling apropriate vaues.
